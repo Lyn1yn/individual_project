@@ -5,31 +5,32 @@
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --array=0-3%1
+#SBATCH --array=0-8%1
 
 set -eo pipefail
 
 source ~/.bashrc
 
-# Derive WORKDIR from the script's own location, so it works for any user.
-# Assumes this script lives at: <project_root>/ichorcna/run_batch_ichorCNA_500kb.sh
-# WORKDIR resolves to:          <project_root>/ichorcna/
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORKDIR="${SCRIPT_DIR}"
+WORKDIR="/gpfs01/home/mbxll1/CNS_cancer_project/ichorCNA"
 
-# Shared raw BAM directory - unchanged
+#sample location
 RAW_BAM_DIR="/gpfs01/share/BioinfMSc/Matt_Projects/Nanopore"
 
 BAMS=(
 "sort_Intraop0006_A.bam"
 "sort_Intraop0021_c.bam"
+"sort_Intraop0030_a.bam"
 "sort_Intraop0034_b.bam"
+"sort_Intraop0051_c.bam"
+"sort_Intraop0057_c.bam"
+"sort_ds1305_CNVDetection_0051_c.bam"
 "sort_ds1305_CNVIntraop0067_a.bam"
+"sort_ds1305_Intraop_CNV_0062_c.bam"
 )
 
-BAM_NAME="${BAMS[$SLURM_ARRAY_TASK_ID]}"
 
-# Strip "sort_" prefix and ".bam" suffix to get sample name
+# delete "sort" and "bam" in the sample name
+BAM_NAME="${BAMS[$SLURM_ARRAY_TASK_ID]}"
 SAMPLE="${BAM_NAME#sort_}"
 SAMPLE="${SAMPLE%.bam}"
 
@@ -86,12 +87,17 @@ if [ ! -f "${OUTWIG}" ]; then
         "${NORG_BAM}" > "${OUTWIG}"
 fi
 
-# Prevent WIG header from showing 5e+05, which ichorCNA cannot parse
+#To prevent the WIG header from displaying 5e+05, iChorCNA is unable to read it
 sed -i 's/step=5e+05/step=500000/g; s/span=5e+05/span=500000/g' "${OUTWIG}"
 
 echo "WIG generated:"
 ls -lh "${OUTWIG}"
 head "${OUTWIG}"
+
+
+
+
+
 
 
 echo "Step 4: run ichorCNA"
@@ -102,20 +108,23 @@ conda activate ichorcna_R
 ICHOR_REPO="${WORKDIR}/software/GavinHaLab_ichorCNA_v0.4.0"
 RUNICHOR="${ICHOR_REPO}/scripts/runIchorCNA.R"
 
-# Reference files: shared extdata from conda env (user-independent path)
-EXTDATA="$(conda info --base)/envs/ichorcna_R/lib/R/library/ichorCNA/extdata"
 
-GCWIG="${WORKDIR}/reference/g_hg38_500kb.wig"
-MAPWIG="${EXTDATA}/map_hg38_500kb.wig"
-CENTROMERE="${EXTDATA}/GRCh38.GCA_000001405.2_centromere_acen.txt"
+#references
+EXTDATA="/gpfs01/home/mbxll1/miniconda3/envs/ichorcna_R/lib/R/library/ichorCNA/extdata"
 
-echo "Check ichorCNA input files"
+GCWIG="${WORKDIR}/reference/g_hg38_500kb.wig" #gc content, need to get gc content previously
+MAPWIG="${EXTDATA}/map_hg38_500kb.wig" #mappability file
+CENTROMERE="${EXTDATA}/GRCh38.GCA_000001405.2_centromere_acen.txt" #centromere region file
+
+echo "Check ichorCNA input files" #check files existence
 ls -lh "${RUNICHOR}"
 ls -lh "${OUTWIG}"
 ls -lh "${GCWIG}"
 ls -lh "${MAPWIG}"
 ls -lh "${CENTROMERE}"
 
+
+#Run GavinHaLab's runIchorCNA.R script using Rscript.
 Rscript "${RUNICHOR}" \
   --libdir "${ICHOR_REPO}" \
   --id "${SAMPLE}_500kb" \
@@ -143,10 +152,13 @@ Rscript "${RUNICHOR}" \
   > "${LOGDIR}/${SAMPLE}_500kb.ichorCNA.log" 2>&1
 
 
+
+
 echo "Remove large intermediate BAM files to save quota"
 rm -f "${PRIMARY_BAM}" "${PRIMARY_BAM}.bai"
 rm -f "${NORG_BAM}" "${NORG_BAM}.bai"
 rm -f "${HEADER}"
+
 
 
 echo "Done sample: ${SAMPLE}"
