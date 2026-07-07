@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import pyBigWig
 from pathlib import Path
 from adjustText import adjust_text
+from scipy.ndimage import gaussian_filter1d
 
 
 
@@ -12,7 +13,7 @@ from adjustText import adjust_text
 samples_dir = Path("/gpfs01/share/BioinfMSc/Matt_Projects/samples")
 
 # output folder
-outdir = Path("/gpfs01/home/mbxll1/CNS_cancer_project/test_consecutive3_no_intrachrom")
+outdir = Path("/gpfs01/home/mbxll1/CNS_cancer_project/test_correlation")
 outdir.mkdir(parents=True, exist_ok=True)
 
 chromosomes = [f"chr{i}" for i in range(1, 23)] #only select autosomes
@@ -195,7 +196,7 @@ def match_by_nearest_x(illumina_x, illumina_y, nanopore_x, nanopore_y, tolerance
 #7.main loop
 summary = [] #creat a list, to store the correlation result for each samples
 
-
+##prepare data
 for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything under the shared sample directory
 
     if not sample_dir.is_dir(): #skip non-folder (e.g. README.md)
@@ -228,19 +229,18 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
     nanopore_total_points = 0 #how may nanopore have after merge
     matched_total_points = 0 #the matched points number for correlation
 
-    illumina_noise_values = [] #store Illumina noise values for each chromosome
-    nanopore_noise_values = [] #store nanopore noise values for each chromosome
     match_distance_values = [] #store genomic distances between matched Illumina and Nanopore points
 
-    # per-chromosome matched CN values (needed for teacher's intra-chrom threshold)
+    # per-chromosome matched CN values (needed for intra-chrom threshold)
     _illumina_per_chrom = {}
     _nanopore_per_chrom  = {}
 
-    # per-chromosome matched CN values using RAW (no-merge) bins,
+    # per-chromosome matched CN values using raw (no-merge) bins,
     # only used to colour plots by no-merge Illumina CN load
     _illumina_per_chrom_no_merge = {}
 
 
+##process chromosome-by-chromosome
     #illumina and nanopore data for each chromosome
     for chrom in chromosomes: #from chromosome 1 to chromosome 22
         
@@ -264,15 +264,7 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
             illumina_target_reads
         )
 
-        # calculate CNV profile noise for this chromosome
-        if len(np_y) > 1: #need at least 2 points to calculate the difference between adjacent points
-            nanopore_noise_values.append(np.median(np.abs(np.diff(np_y)))) #calculate the meidan absolute difference between adjacent points (nanopore noise)
-
-        if len(il_y) > 1: #need at least 2 points to calculate the difference between adjacent points
-            illumina_noise_values.append(np.median(np.abs(np.diff(il_y)))) #calculate the median absolute difference between adjacent points (illumina noise)
-        
         #smoothing
-        from scipy.ndimage import gaussian_filter1d
         sigma = 2  #use gaussian filter to smooth
         if len(np_y) > 1: #need at least 2 points to apply smoothing
             np_y = gaussian_filter1d(np_y, sigma=sigma) #smooth nanopore CN value to reduce noise
@@ -304,13 +296,13 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
         nanopore_total_points += len(np_y) #calculate the total number of nanopore matched points
         matched_total_points += n #calculate the matched points number
 
-        # --- no-merge (raw bin) matching, only used to colour plots by no-merge Illumina CN load ---
+        #no-merge matching, only used to colour plots by no-merge Illumina CN load
         np_x_raw, np_y_raw = raw_nanopore_points(nanopore_values, nanopore_bin_width)
         il_x_raw, il_y_raw = raw_illumina_points(sub)
         # raw bins can overlap by up to half the sum of the two bin widths
         tolerance_no_merge = (nanopore_bin_width + illumina_bin_size) / 2
 
-        il_common_no_merge, np_common_no_merge, n_no_merge, distances_no_merge = match_by_nearest_x(
+        il_common_no_merge, _, _, _ = match_by_nearest_x(
             il_x_raw,
             il_y_raw,
             np_x_raw,
@@ -327,9 +319,6 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
 
 
     #scatter plots
-    #noise
-    illumina_noise = np.median(illumina_noise_values) #every chromosome has a noise value, take the median as the overall noise value for the sample
-    nanopore_noise = np.median(nanopore_noise_values) #every chromosome has a noise value, take the median as the overall noise value for the sample
 
     #distance between matched points
     median_match_distance = np.nan #default to NaN in case no points were matched
@@ -347,8 +336,7 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
 
 
 
-
-    # Copy number load (Tom's threshold logic + consecutive altered points)
+    # Copy number load
     # It first labels each matched point as altered/normal, then only counts altered runs that contain at least min_consecutive_points in a row.
 
     normal_copy_number   = 2.0
@@ -356,7 +344,6 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
     abs_cn_threshold     = 0.60   # CN must be <=1.40 or >=2.60 to pass absolute CN criterion
     abs_z_threshold      = 2.00   # minimum z-score paired with abs threshold
     z_threshold          = 3.00
-    gap_cn_floor         = -np.inf
 
     # Require several consecutive altered matched points before counting them.
     min_consecutive_points = 3
@@ -372,10 +359,8 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
 
 
     def is_point_altered(cn_value, robust_std):
-        """Return True if one merged CN point passes Tom's threshold."""
+        """Return True if one merged CN point passes threshold."""
         if not np.isfinite(cn_value): #skip NaN or Inf CN values
-            return False
-        if cn_value <= gap_cn_floor: #skip gap/placeholder CN values
             return False
 
         normal_shift = abs(cn_value - normal_copy_number) #absolute deviation of this point from normal copy number(2)
@@ -456,12 +441,12 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
 
     # Build per-chromosome arrays for matched points.
     # need to re-collect them from the per-chrom loop, so attach them here.
-    illumina_cn_load, illumina_cn_load_point, illumina_robust_std = compute_cn_load(all_illumina, _illumina_per_chrom)
-    nanopore_cn_load, nanopore_cn_load_point, nanopore_robust_std = compute_cn_load(all_nanopore, _nanopore_per_chrom)
+    illumina_cn_load, _, _ = compute_cn_load(all_illumina, _illumina_per_chrom)
+    nanopore_cn_load, _, _ = compute_cn_load(all_nanopore, _nanopore_per_chrom)
 
     # Illumina CN load computed from raw (no-merge) bins, used only for colouring plots below.
     all_illumina_no_merge = np.concatenate(list(_illumina_per_chrom_no_merge.values())) if _illumina_per_chrom_no_merge else np.array([], dtype=float)
-    illumina_cn_load_no_merge, illumina_cn_load_point_no_merge, illumina_robust_std_no_merge = compute_cn_load(all_illumina_no_merge, _illumina_per_chrom_no_merge)
+    illumina_cn_load_no_merge, _, _ = compute_cn_load(all_illumina_no_merge, _illumina_per_chrom_no_merge)
     
 
 
@@ -470,20 +455,11 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
     cn_load_abs_difference = abs(cn_load_difference)
 
 
-    #calculate pearson and spearman
+    #calculate pearson
     pearson_r = pd.Series(all_illumina).corr( #change CN value into pandas Series. Calculate correlation.
         pd.Series(all_nanopore), #change CN value into pandas Series
         method="pearson"
     )
-
-    spearman_rho = pd.Series(all_illumina).corr( #change CN value into pandas Series. Calculate correlation.
-        pd.Series(all_nanopore), #change CN value into pandas Series
-        method="spearman"
-    )
-
-
-    #get the difference between pearson and spearman 
-    pearson_spearman_difference = pearson_r - spearman_rho
 
 
 
@@ -501,8 +477,6 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
         "illumina_cn_sd": illumina_cn_sd,
         "nanopore_cn_sd": nanopore_cn_sd,
 
-        "illumina_noise": illumina_noise,
-        "nanopore_noise": nanopore_noise,
         "median_match_distance": median_match_distance,
 
         # platform-specific normalisation
@@ -518,21 +492,12 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
         "nanopore_cn_load": nanopore_cn_load,
         "cn_load_difference": cn_load_difference,
         "cn_load_abs_difference": cn_load_abs_difference,
-        "illumina_cn_load_point": illumina_cn_load_point,
-        "nanopore_cn_load_point": nanopore_cn_load_point,
-        "illumina_robust_std": illumina_robust_std,
-        "nanopore_robust_std": nanopore_robust_std,
-        "min_consecutive_points": min_consecutive_points,
-        "abs_cn_threshold": abs_cn_threshold,
-        "robust_std_floor": robust_std_floor,
 
         # Illumina CN load from raw (no-merge) bins, used for colouring plots
         "illumina_cn_load_no_merge": illumina_cn_load_no_merge,
 
 
         "pearson_r": pearson_r,
-        "spearman_rho": spearman_rho,
-        "pearson_spearman_difference": pearson_spearman_difference
     })
 
 
@@ -562,20 +527,6 @@ summary_df.to_csv(
 
 print("\nPearson summary:")
 print(summary_df["pearson_r"].describe())
-
-print("\nSpearman summary:")
-print(summary_df["spearman_rho"].describe())
-
-
-print("\nRelationship between CNV signal strength and Pearson:")
-print(
-    "Illumina CN SD vs Pearson:",
-    summary_df["illumina_cn_sd"].corr(summary_df["pearson_r"], method="pearson")
-)
-print(
-    "Nanopore CN SD vs Pearson:",
-    summary_df["nanopore_cn_sd"].corr(summary_df["pearson_r"], method="pearson")
-)
 
 
 #cn load and pearson relationship results
@@ -620,157 +571,6 @@ plt.savefig(outdir / "pearson_correlation_by_sample.png", dpi=300)
 plt.close()
 
 
-
-#spearman plot
-plt.figure(figsize=(12, 5))
-
-plt.bar(
-    x,
-    summary_df["spearman_rho"]
-)
-
-plt.xticks(x, summary_df["sample"], rotation=90)
-plt.ylim(-1, 1)
-
-plt.ylabel("Spearman correlation coefficient")
-plt.xlabel("Sample")
-plt.title("Spearman correlation between Illumina and Nanopore CNV profiles")
-plt.axhline(0, linestyle="--", linewidth=0.8)
-
-plt.tight_layout()
-plt.savefig(outdir / "spearman_correlation_by_sample.png", dpi=300)
-plt.close()
-
-
-
-
-
-
-
-# Illumina CN signal strength(cn points fluctuation) vs Pearson
-plt.figure(figsize=(6, 5))
-
-plt.scatter(
-    summary_df["illumina_cn_sd"],
-    summary_df["pearson_r"],
-    s=40
-)
-
-plt.xlabel("Illumina CN standard deviation")
-plt.ylabel("Pearson correlation coefficient")
-plt.title("Illumina CNV signal strength vs Pearson correlation")
-plt.axhline(0, linestyle="--", linewidth=0.8)
-
-plt.tight_layout()
-plt.savefig(outdir / "illumina_cn_sd_vs_pearson.png", dpi=300)
-plt.close()
-
-
-
-# Nanopore CN signal strength (cn points fluctuation) vs Pearson
-plt.figure(figsize=(6, 5))
-
-plt.scatter(
-    summary_df["nanopore_cn_sd"],
-    summary_df["pearson_r"],
-    s=40
-)
-
-plt.xlabel("Nanopore CN standard deviation")
-plt.ylabel("Pearson correlation coefficient")
-plt.title("Nanopore CNV signal strength vs Pearson correlation")
-plt.axhline(0, linestyle="--", linewidth=0.8)
-
-plt.tight_layout()
-plt.savefig(outdir / "nanopore_cn_sd_vs_pearson.png", dpi=300)
-plt.close()
-
-
-
-# Illumina noise vs Pearson
-plt.figure(figsize=(6, 5))
-
-plt.scatter(
-    summary_df["illumina_noise"],
-    summary_df["pearson_r"],
-    s=40
-)
-
-plt.xlabel("Illumina CNV noise")
-plt.ylabel("Pearson correlation coefficient")
-plt.title("Illumina CNV noise vs Pearson correlation")
-plt.axhline(0, linestyle="--", linewidth=0.8)
-
-plt.tight_layout()
-plt.savefig(outdir / "illumina_noise_vs_pearson.png", dpi=300)
-plt.close()
-
-
-
-# Nanopore noise vs Pearson
-plt.figure(figsize=(6, 5))
-
-plt.scatter(
-    summary_df["nanopore_noise"],
-    summary_df["pearson_r"],
-    s=40
-)
-
-plt.xlabel("Nanopore CNV noise")
-plt.ylabel("Pearson correlation coefficient")
-plt.title("Nanopore CNV noise vs Pearson correlation")
-plt.axhline(0, linestyle="--", linewidth=0.8)
-
-plt.tight_layout()
-plt.savefig(outdir / "nanopore_noise_vs_pearson.png", dpi=300)
-plt.close()
-
-
-
-# median CN difference vs Pearson (baseline)
-plt.figure(figsize=(6, 5))
-
-plt.scatter(
-    summary_df["median_cn_difference"],
-    summary_df["pearson_r"],
-    s=40
-)
-
-plt.xlabel("Nanopore median CN - Illumina median CN")
-plt.ylabel("Pearson correlation coefficient")
-plt.title("Platform CN baseline difference vs Pearson correlation")
-plt.axhline(0, linestyle="--", linewidth=0.8)
-plt.axvline(0, linestyle="--", linewidth=0.8)
-
-plt.tight_layout()
-plt.savefig(outdir / "median_cn_difference_vs_pearson.png", dpi=300)
-plt.close()
-
-
-
-# Nanopore total estimated read counts (approximate coverage) vs Pearson
-plt.figure(figsize=(6, 5))
-
-plt.scatter(
-    summary_df["nanopore_total_estimated_reads"],
-    summary_df["pearson_r"],
-    s=40
-)
-
-add_sample_labels(
-    summary_df["nanopore_total_estimated_reads"],
-    summary_df["pearson_r"],
-    summary_df["sample_id"].astype(str)
-)
-
-plt.xlabel("Nanopore total estimated read counts")
-plt.ylabel("Pearson correlation coefficient")
-plt.title("Nanopore total estimated read counts vs Pearson correlation")
-plt.axhline(0, linestyle="--", linewidth=0.8)
-
-plt.tight_layout()
-plt.savefig(outdir / "nanopore_total_estimated_reads_vs_pearson.png", dpi=300)
-plt.close()
 
 
 
@@ -830,48 +630,4 @@ plt.close()
 
 
 
-# Illumina vs Nanopore copy number load
-plt.figure(figsize=(6, 6))
 
-sc = plt.scatter(
-    summary_df["illumina_cn_load"],
-    summary_df["nanopore_cn_load"],
-    c=summary_df["illumina_cn_load_no_merge"],
-    cmap="viridis",
-    s=45,
-    edgecolors="black",
-    linewidths=0.3
-)
-add_sample_labels(summary_df["illumina_cn_load"], summary_df["nanopore_cn_load"], summary_df["sample_id"])
-
-cbar = plt.colorbar(sc)
-cbar.set_label("Illumina CN load from no-merge data (%)")
-
-plt.xlabel("Illumina copy number load")
-plt.ylabel("Nanopore copy number load")
-plt.title("Copy number load comparison between platforms, coloured by no-merge Illumina CN load")
-
-plt.tight_layout()
-plt.savefig(outdir / "illumina_vs_nanopore_cn_load.png", dpi=300)
-plt.close()
-
-
-
-# CN load difference vs Pearson
-plt.figure(figsize=(6, 5))
-
-plt.scatter(
-    summary_df["cn_load_abs_difference"],
-    summary_df["pearson_r"],
-    s=40
-)
-add_sample_labels(summary_df["cn_load_abs_difference"], summary_df["pearson_r"], summary_df["sample_id"])
-
-plt.xlabel("Absolute difference in copy number load")
-plt.ylabel("Pearson correlation coefficient")
-plt.title("Platform CN load difference vs Pearson correlation")
-plt.axhline(0, linestyle="--", linewidth=0.8)
-
-plt.tight_layout()
-plt.savefig(outdir / "cn_load_difference_vs_pearson.png", dpi=300)
-plt.close()
