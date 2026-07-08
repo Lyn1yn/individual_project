@@ -87,16 +87,7 @@ def merge_illumina(sub, target_reads):
 
 
 
-#3b. raw (no-merge) nanopore points, used only for computing no-merge Illumina CN load colouring
-def raw_nanopore_points(values, bin_width):
-    """Use original Nanopore CNV bins directly, without merging."""
-    y = np.asarray(values, dtype=float)
-    x = (np.arange(len(y)) + 0.5) * bin_width
-    return x, y
-
-
-
-#3c. raw (no-merge) illumina points, used only for computing no-merge Illumina CN load colouring
+#3b. raw (no-merge) illumina points, used only for computing no-merge Illumina CN load colouring
 def raw_illumina_points(sub):
     """Use original Illumina target bins directly, without merging."""
     if len(sub) == 0:
@@ -235,7 +226,7 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
     _illumina_per_chrom = {}
     _nanopore_per_chrom  = {}
 
-    # per-chromosome matched CN values using raw (no-merge) bins,
+    # per-chromosome ALL raw (no-merge) Illumina CN values (no Nanopore matching),
     # only used to colour plots by no-merge Illumina CN load
     _illumina_per_chrom_no_merge = {}
 
@@ -296,21 +287,10 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
         nanopore_total_points += len(np_y) #calculate the total number of nanopore matched points
         matched_total_points += n #calculate the matched points number
 
-        #no-merge matching, only used to colour plots by no-merge Illumina CN load
-        np_x_raw, np_y_raw = raw_nanopore_points(nanopore_values, nanopore_bin_width)
-        il_x_raw, il_y_raw = raw_illumina_points(sub)
-        # raw bins can overlap by up to half the sum of the two bin widths
-        tolerance_no_merge = (nanopore_bin_width + illumina_bin_size) / 2
-
-        il_common_no_merge, _, _, _ = match_by_nearest_x(
-            il_x_raw,
-            il_y_raw,
-            np_x_raw,
-            np_y_raw,
-            tolerance_no_merge
-        )
-
-        _illumina_per_chrom_no_merge[chrom] = np.array(il_common_no_merge, dtype=float)
+        # no-merge Illumina CN load: use ALL raw Illumina bins directly,
+        # no Nanopore matching. Only used to colour plots.
+        _, il_y_raw = raw_illumina_points(sub)
+        _illumina_per_chrom_no_merge[chrom] = np.array(il_y_raw, dtype=float)
 
 
     all_illumina = np.array(all_illumina, dtype=float) #convert list to numpy array, and make sure it only contains numbers
@@ -593,7 +573,7 @@ cbar.set_label("Illumina CN load from no-merge data (%)")
 
 plt.xlabel("Illumina copy number load (%)")
 plt.ylabel("Pearson correlation coefficient")
-plt.title("Illumina copy number load vs Pearson correlation, coloured by no-merge Illumina CN load")
+plt.title("Illumina copy number load vs Pearson correlation")
 plt.axhline(0, linestyle="--", linewidth=0.8)
 
 plt.tight_layout()
@@ -621,7 +601,7 @@ cbar.set_label("Illumina CN load from no-merge data (%)")
 
 plt.xlabel("Nanopore copy number load (%)")
 plt.ylabel("Pearson correlation coefficient")
-plt.title("Nanopore copy number load vs Pearson correlation, coloured by no-merge Illumina CN load")
+plt.title("Nanopore copy number load vs Pearson correlation")
 plt.axhline(0, linestyle="--", linewidth=0.8)
 
 plt.tight_layout()
