@@ -496,7 +496,13 @@ def add_sample_labels(x_values, y_values, sample_names):
 summary_df = pd.DataFrame(summary) #create a dataframe to store summary list from each loop
 summary_df.to_csv(outdir / "correlation_summary.csv", index=False) #save the dataframe into csv file
 summary_df = summary_df.sort_values("sample") #sort samples by their samples' name
-summary_df["sample_id"] = summary_df["sample"].str.extract(r'-(\d+)_')[0]
+summary_df["sample_id"] = summary_df["sample"].str.extract(r'-(\d+)_')[0] #get the sample number, and save as sample_id
+#sort by sample number
+summary_df = summary_df.sort_values(
+    "sample_id",
+    key=lambda s: pd.to_numeric(s, errors="coerce"),
+    kind="stable"
+).reset_index(drop=True)
 
 
 
