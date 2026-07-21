@@ -2,18 +2,21 @@ import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-# input sample folder
+# Shared data directory - unchanged
 samples_dir = Path("/gpfs01/share/BioinfMSc/Matt_Projects/samples")
 
-# output folder
-outdir = Path("/gpfs01/home/mbxll1/CNS_cancer_project/scatter_plot_nanopore/5000")
+# Output directory - derived relative to this script's location
+# Assumes this script lives at: <project_root>/nanopore_profile/nanopore_5000.py
+# Output goes to:               <project_root>/scatter_plot_nanopore/5000/
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = SCRIPT_DIR.parent
+outdir = PROJECT_DIR / "scatter_plot_nanopore" / "5000"
 outdir.mkdir(parents=True, exist_ok=True)
 
 # autosomes only
 chromosomes = [f"chr{i}" for i in range(1, 23)]
 
 def bin_by_estimate_reads(values, bin_width, target_reads): #define a function contains 3 inputs: 
-
     x_list = [] #create a list contains the position of x-axis, when creat a new plot bin, put a new coordinate in this list
     y_list = [] #create a list contains copy number
 
@@ -21,13 +24,14 @@ def bin_by_estimate_reads(values, bin_width, target_reads): #define a function c
     reads_sum = 0 #to record the estimated reads number accumulated for this group so far. Don't have any bins at first, so is 0
     start = 0 #to record this group started with which bin, to start with bin 0
 
+
     for i, cnv_value in enumerate(values): #read the CNV copy number of chromosomes one by one. The i here is the bins' number.
-        estimate_reads = cnv_value / 2 *100 #to calculate estimate reads
+        estimate_reads = cnv_value / 2 * 100 #to calculate estimate reads
         group.append(cnv_value) #put CNV copy numbers into the list created before
         reads_sum += estimate_reads #put the bin reads into the merged reads
         if reads_sum >= target_reads: #to check whether the merged reads is enough
             y_list.append(np.median(group)) #if the merged reads is enough, calculate the median copy numbers
-            x_list.append(((start +i + 1) / 2) * bin_width) #calculate the x positon for the points
+            x_list.append(((start + i + 1) / 2) * bin_width) #calculate the x positon for the points
             group = [] #clear the group for the next group of merged bins
             reads_sum = 0 #clear the reads sum, then calculate for a new merge group
             start = i + 1 #the new merge group start from the next bin
@@ -50,15 +54,18 @@ for sample_dir in sorted(samples_dir.iterdir()): #Iterate through everything in 
 
     output = outdir / f"{sample}_nanopore_merged_reads.png" #set name for each picture
 
+
     # import result data from cnv_from_bam
     cnv = np.load(cnv_file, allow_pickle=True).item()
     cnv_dict = np.load(cnv_dict_file, allow_pickle=True).item()
 
+
     # get bin width
     bin_width = cnv_dict["bin_width"]
 
+
     # target reads 5000 as reference
-    target_reads = 5000 #reads of sample 5000
+    target_reads = 5000
 
 
     #calculate merged bin width
@@ -74,19 +81,20 @@ for sample_dir in sorted(samples_dir.iterdir()): #Iterate through everything in 
     # creat a picture
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(18, 4))
 
+
     # to draw chromosome1 from origin point
     total = 0
 
-    # create 2 list for chromosome labels
+    # create 2 list for chromosome labels    
     xticks = []
     xticklabels = []
 
-    # plot
-    for contig in chromosomes:
-        values = np.array(cnv[contig], dtype=float) # only select first 22 chromosomes
-        chromo_length = len(values) * bin_width
 
-        # merge bins, 500reads per point
+    #plot
+    for contig in chromosomes:
+        values = np.array(cnv[contig], dtype=float)
+        chromo_length = len(values) * bin_width
+        #merge bins, 5000reads per point
         x, y = bin_by_estimate_reads(values, bin_width, target_reads)
 
         ax.scatter(

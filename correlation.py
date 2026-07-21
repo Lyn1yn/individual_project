@@ -13,7 +13,11 @@ from scipy.ndimage import gaussian_filter1d
 samples_dir = Path("/gpfs01/share/BioinfMSc/Matt_Projects/samples")
 
 # output folder
-outdir = Path("/gpfs01/home/mbxll1/CNS_cancer_project/test_correlation")
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+
+outdir = PROJECT_DIR / "correlation"
+
+
 outdir.mkdir(parents=True, exist_ok=True)
 
 chromosomes = [f"chr{i}" for i in range(1, 23)] #only select autosomes
@@ -338,13 +342,13 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
         return max(1.4826 * mad, robust_std_floor) #scale mad to approxiate std, enforce minimum floor to avoid zero
 
 
-    def is_point_altered(cn_value, robust_std):
+    def is_point_altered(cn_value, robust_std, baseline=2.0):
         """Return True if one merged CN point passes threshold."""
         if not np.isfinite(cn_value): #skip NaN or Inf CN values
             return False
 
-        normal_shift = abs(cn_value - normal_copy_number) #absolute deviation of this point from normal copy number(2)
-        normal_z     = normal_shift / robust_std #how many units away from 2 this point is
+        normal_shift = abs(cn_value - baseline) #absolute deviation of this point from the baseline copy number (default 2)
+        normal_z     = normal_shift / robust_std #how many units away from baseline this point is
 
         return (
             (normal_shift >= abs_cn_threshold and normal_z >= abs_z_threshold) #large absolute shift and moderately high z-score
@@ -374,7 +378,7 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
 
 
 
-    def compute_cn_load(all_cn, per_chrom_cn):
+    def compute_cn_load(all_cn, per_chrom_cn, baseline=2.0):
         """
         Conservative CN load:
         1. label each matched point using Tom's thresholds;
@@ -395,7 +399,7 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
                 continue
 
             point_flags = np.array([
-                is_point_altered(v, robust_std)
+                is_point_altered(v, robust_std, baseline=baseline)
                 for v in cn_arr
             ], dtype=bool) #for every cn value in the chromosome, use "is_point_altered" to define if it is altered or normal(the results are true and false for each points)
 
@@ -427,6 +431,48 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
     # Illumina CN load computed from raw (no-merge) bins, used only for colouring plots below.
     all_illumina_no_merge = np.concatenate(list(_illumina_per_chrom_no_merge.values())) if _illumina_per_chrom_no_merge else np.array([], dtype=float)
     illumina_cn_load_no_merge, _, _ = compute_cn_load(all_illumina_no_merge, _illumina_per_chrom_no_merge)
+
+    # Ploidy-aware CN load for samples estimated as ploidy 3 by ichorCNA.
+    # The CN profile is normalised so its median maps to 2, but for a ploidy-3 tumour
+    # the true baseline is 3 copies. We rescale relative CN (centred on 2) into an
+    # approximate absolute CN (centred on ichorCNA ploidy) and measure alteration
+    # relative to that ploidy baseline instead of 2.
+    ploidy_override = {
+        "STG05R2-13_b-E01": 3.0
+    }
+
+    ichor_ploidy = ploidy_override.get(sample, 2.0)
+    is_ploidy_adjusted_sample = sample in ploidy_override
+
+    illumina_cn_load_ploidy_adjusted = np.nan
+    nanopore_cn_load_ploidy_adjusted = np.nan
+
+    if is_ploidy_adjusted_sample:
+        # Convert relative CN scaled around 2 into approximate absolute CN scaled around ichorCNA ploidy
+        illumina_abs_like = all_illumina * ichor_ploidy / 2.0
+        nanopore_abs_like = all_nanopore * ichor_ploidy / 2.0
+
+        illumina_per_chrom_abs_like = {
+            chrom: arr * ichor_ploidy / 2.0
+            for chrom, arr in _illumina_per_chrom.items()
+        }
+
+        nanopore_per_chrom_abs_like = {
+            chrom: arr * ichor_ploidy / 2.0
+            for chrom, arr in _nanopore_per_chrom.items()
+        }
+
+        illumina_cn_load_ploidy_adjusted, _, _ = compute_cn_load(
+            illumina_abs_like,
+            illumina_per_chrom_abs_like,
+            baseline=ichor_ploidy
+        )
+
+        nanopore_cn_load_ploidy_adjusted, _, _ = compute_cn_load(
+            nanopore_abs_like,
+            nanopore_per_chrom_abs_like,
+            baseline=ichor_ploidy
+        )
     
 
 
@@ -472,6 +518,12 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
         "nanopore_cn_load": nanopore_cn_load,
         "cn_load_difference": cn_load_difference,
         "cn_load_abs_difference": cn_load_abs_difference,
+
+        # ploidy-adjusted CN load (only non-NaN for ichorCNA ploidy-3 samples)
+        "ichor_ploidy_for_cn_load": ichor_ploidy,
+        "is_ploidy_adjusted_sample": is_ploidy_adjusted_sample,
+        "illumina_cn_load_ploidy_adjusted": illumina_cn_load_ploidy_adjusted,
+        "nanopore_cn_load_ploidy_adjusted": nanopore_cn_load_ploidy_adjusted,
 
         # Illumina CN load from raw (no-merge) bins, used for colouring plots
         "illumina_cn_load_no_merge": illumina_cn_load_no_merge,
@@ -574,6 +626,29 @@ sc = plt.scatter(
 )
 add_sample_labels(summary_df["illumina_cn_load"], summary_df["pearson_r"], summary_df["sample_id"])
 
+special = summary_df[summary_df["is_ploidy_adjusted_sample"]].copy()
+
+plt.scatter(
+    special["illumina_cn_load_ploidy_adjusted"],
+    special["pearson_r"],
+    marker="*",
+    s=180,
+    facecolors="none",
+    edgecolors="red",
+    linewidths=1.2,
+    label="Ploidy-adjusted CN load (ichorCNA ploidy=3)"
+)
+
+for _, row in special.iterrows():
+    plt.annotate(
+        "",
+        xy=(row["illumina_cn_load_ploidy_adjusted"], row["pearson_r"]),
+        xytext=(row["illumina_cn_load"], row["pearson_r"]),
+        arrowprops=dict(arrowstyle="->", color="red", lw=0.8)
+    )
+
+plt.legend(fontsize=7)
+
 cbar = plt.colorbar(sc)
 cbar.set_label("Illumina CN load from no-merge data (%)")
 
@@ -601,6 +676,29 @@ sc = plt.scatter(
     linewidths=0.3
 )
 add_sample_labels(summary_df["nanopore_cn_load"], summary_df["pearson_r"], summary_df["sample_id"])
+
+special = summary_df[summary_df["is_ploidy_adjusted_sample"]].copy()
+
+plt.scatter(
+    special["nanopore_cn_load_ploidy_adjusted"],
+    special["pearson_r"],
+    marker="*",
+    s=180,
+    facecolors="none",
+    edgecolors="red",
+    linewidths=1.2,
+    label="Ploidy-adjusted CN load (ichorCNA ploidy=3)"
+)
+
+for _, row in special.iterrows():
+    plt.annotate(
+        "",
+        xy=(row["nanopore_cn_load_ploidy_adjusted"], row["pearson_r"]),
+        xytext=(row["nanopore_cn_load"], row["pearson_r"]),
+        arrowprops=dict(arrowstyle="->", color="red", lw=0.8)
+    )
+
+plt.legend(fontsize=7)
 
 cbar = plt.colorbar(sc)
 cbar.set_label("Illumina CN load from no-merge data (%)")

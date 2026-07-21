@@ -3,20 +3,21 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-
 sample = "STG05-52_c-E03"
 
+# input: hared data directory
 bw_file = Path(
     f"/gpfs01/share/BioinfMSc/Matt_Projects/samples/{sample}/illumina/{sample}.tumor.target.counts.bw"
 )
 
-bin_width_file = Path(
-    "/gpfs01/home/mbxll1/CNS_cancer_project/scatter_plot_illumina/all_bin_width.txt"
-)
-
-outdir = Path(
-    "/gpfs01/home/mbxll1/CNS_cancer_project/scatter_plot_illumina/4_fixed_target_reads/5000"
-)
+# Input bin width file and output directory - derived relative to this script's location
+# Assumes this script lives at: <project_root>/illumina_profile/52.py
+# bin_width_file is expected at: <project_root>/scatter_plot_nanopore/all_bin_width.txt
+# Output goes to:                <project_root>/scatter_plot_illumina/5000/
+SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = SCRIPT_DIR.parent
+bin_width_file = PROJECT_DIR / "scatter_plot_nanopore" / "all_bin_width.txt"
+outdir = PROJECT_DIR / "scatter_plot_illumina" / "5000"
 outdir.mkdir(parents=True, exist_ok=True)
 
 target_np_reads = 5000
@@ -50,7 +51,7 @@ def merge_by_reads(sub, reads_col, target_reads):
     return x_list, y_list
 
 
-# 读取这个 sample 对应的 nanopore bin width
+# Read nanopore bin width for this sample
 bin_width_df = pd.read_csv(
     bin_width_file,
     sep=r"\s+",
@@ -66,7 +67,7 @@ if bin_width_row.empty:
 bin_width = float(bin_width_row["bin_width"].iloc[0])
 
 
-# 读取 bigWig
+# Read bigWig
 if not bw_file.exists():
     raise FileNotFoundError(f"BigWig file not found: {bw_file}")
 
@@ -74,7 +75,6 @@ bw = pyBigWig.open(str(bw_file))
 
 records = []
 
-# 判断 chromosome 名字是 chr1 还是 1
 chroms = bw.chroms()
 
 if "chr1" in chroms:
@@ -113,22 +113,16 @@ df = pd.DataFrame(records)
 if df.empty:
     raise ValueError("No data extracted from BigWig file.")
 
-
-# 只保留 autosomes
 df = df[df["contig"].isin(autosomes)].copy()
 
-# 计算 copy number
 reads = "reads"
 median_reads = df[reads].median()
 
 df["copy_number"] = 2 * df[reads] / median_reads
 
-# 染色体排序
 df["chrom_num"] = df["contig"].str.replace("chr", "", regex=False).astype(int)
 df = df.sort_values(["chrom_num", "start"]).copy()
 
-
-# 计算 illumina target reads
 illumina_bin_size = (df["stop"] - df["start"]).median()
 
 merged_bin_width = target_np_reads / 100 * bin_width
@@ -151,8 +145,6 @@ print(
     f"illumina_approx_merged_bin_width: {illumina_approx_merged_bin_width:.0f}"
 )
 
-
-# 输出文件名
 output = outdir / f"{sample}_illumina_merged_reads.png"
 
 fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(18, 4))
@@ -173,11 +165,7 @@ for contig in autosomes:
 
     x = [i + total for i in x]
 
-    ax.scatter(
-        x=x,
-        y=y,
-        s=0.1,
-    )
+    ax.scatter(x=x, y=y, s=0.1)
 
     xticks.append(total + chromo_length / 2)
     xticklabels.append(contig.replace("chr", ""))

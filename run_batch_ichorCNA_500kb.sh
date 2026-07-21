@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=batch_ichorCNA_500kb
-#SBATCH --output=batch_ichorCNA_500kb_%A_%a.out
-#SBATCH --error=batch_ichorCNA_500kb_%A_%a.err
+#SBATCH --output=../ichorcna_autosome/logs/batch_ichorCNA_500kb_%A_%a.out
+#SBATCH --error=../ichorcna_autosome/logs/batch_ichorCNA_500kb_%A_%a.err
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
@@ -11,7 +11,14 @@ set -eo pipefail
 
 source ~/.bashrc
 
-WORKDIR="/gpfs01/home/mbxll1/CNS_cancer_project/ichorCNA"
+SCRIPT_DIR="${SLURM_SUBMIT_DIR}"
+PROJECT_DIR="$(dirname "${SCRIPT_DIR}")"
+
+
+
+WORKDIR="${PROJECT_DIR}/ichorcna_autosome"
+
+
 
 #sample location
 RAW_BAM_DIR="/gpfs01/share/BioinfMSc/Matt_Projects/Nanopore"
@@ -28,18 +35,18 @@ BAMS=(
 "sort_ds1305_Intraop_CNV_0062_c.bam"
 )
 
+BAM_NAME="${BAMS[$SLURM_ARRAY_TASK_ID]}"
 
 # delete "sort" and "bam" in the sample name
-BAM_NAME="${BAMS[$SLURM_ARRAY_TASK_ID]}"
 SAMPLE="${BAM_NAME#sort_}"
 SAMPLE="${SAMPLE%.bam}"
 
 RAW_BAM="${RAW_BAM_DIR}/${BAM_NAME}"
 
-FILTER_DIR="${WORKDIR}/2_primary_mapped"
-NORG_DIR="${WORKDIR}/3_remove_RG"
-WIG_DIR="${WORKDIR}/4_wig/500kb"
-OUTDIR="${WORKDIR}/5_ichorCNA_results/500kb/${SAMPLE}"
+FILTER_DIR="${WORKDIR}/1_primary_mapped"
+NORG_DIR="${WORKDIR}/2_remove_RG"
+WIG_DIR="${WORKDIR}/3_wig/500kb"
+OUTDIR="${WORKDIR}/4_ichorCNA_results/500kb/${SAMPLE}"
 LOGDIR="${WORKDIR}/logs"
 
 mkdir -p "${FILTER_DIR}" "${NORG_DIR}" "${WIG_DIR}" "${OUTDIR}" "${LOGDIR}"
@@ -53,7 +60,7 @@ NORG_BAM="${NORG_DIR}/${SAMPLE}.primary_mapped.noRG.bam"
 HEADER="${NORG_DIR}/${SAMPLE}.noRG.header.sam"
 OUTWIG="${WIG_DIR}/${SAMPLE}.${WINDOW}.mapq${MAPQ}.wig"
 
-CHRS="chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22,chrX"
+CHRS="chr1,chr2,chr3,chr4,chr5,chr6,chr7,chr8,chr9,chr10,chr11,chr12,chr13,chr14,chr15,chr16,chr17,chr18,chr19,chr20,chr21,chr22"
 
 echo "=========================================="
 echo "Sample: ${SAMPLE}"
@@ -110,9 +117,9 @@ RUNICHOR="${ICHOR_REPO}/scripts/runIchorCNA.R"
 
 
 #references
-EXTDATA="/gpfs01/home/mbxll1/miniconda3/envs/ichorcna_R/lib/R/library/ichorCNA/extdata"
+EXTDATA="${CONDA_PREFIX}/lib/R/library/ichorCNA/extdata"
 
-GCWIG="${WORKDIR}/reference/g_hg38_500kb.wig" #gc content, need to get gc content previously
+GCWIG="${WORKDIR}/reference/g_hg38_500kb.wig" #gc content
 MAPWIG="${EXTDATA}/map_hg38_500kb.wig" #mappability file
 CENTROMERE="${EXTDATA}/GRCh38.GCA_000001405.2_centromere_acen.txt" #centromere region file
 
@@ -138,7 +145,7 @@ Rscript "${RUNICHOR}" \
   --normal "c(0.3,0.4,0.5,0.6,0.7,0.8,0.9)" \
   --maxCN 5 \
   --includeHOMD False \
-  --chrs "c(\"chr1\",\"chr2\",\"chr3\",\"chr4\",\"chr5\",\"chr6\",\"chr7\",\"chr8\",\"chr9\",\"chr10\",\"chr11\",\"chr12\",\"chr13\",\"chr14\",\"chr15\",\"chr16\",\"chr17\",\"chr18\",\"chr19\",\"chr20\",\"chr21\",\"chr22\",\"chrX\")" \
+  --chrs "c(\"chr1\",\"chr2\",\"chr3\",\"chr4\",\"chr5\",\"chr6\",\"chr7\",\"chr8\",\"chr9\",\"chr10\",\"chr11\",\"chr12\",\"chr13\",\"chr14\",\"chr15\",\"chr16\",\"chr17\",\"chr18\",\"chr19\",\"chr20\",\"chr21\",\"chr22\")" \
   --chrTrain "c(\"chr1\",\"chr2\",\"chr3\",\"chr4\",\"chr5\",\"chr6\",\"chr7\",\"chr8\",\"chr9\",\"chr10\",\"chr11\",\"chr12\",\"chr13\",\"chr14\",\"chr15\",\"chr16\",\"chr17\",\"chr18\",\"chr19\",\"chr20\",\"chr21\",\"chr22\")" \
   --estimateNormal True \
   --estimatePloidy True \

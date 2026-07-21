@@ -1,12 +1,36 @@
 library(BSgenome.Hsapiens.UCSC.hg38)
 library(Biostrings)
+options(scipen = 999)
+
+
+#output
+script_dir <- dirname(normalizePath(
+  sub(
+    "--file=",
+    "",
+    grep("--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
+  )
+))
+
+PROJECT_DIR <- dirname(script_dir)
+
+out_dir <- file.path(
+  PROJECT_DIR,
+  "ichorcna_autosome",
+  "reference"
+)
+
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+out_file <- file.path(out_dir, "g_hg38_500kb.wig")
+
+
+
 
 genome <- BSgenome.Hsapiens.UCSC.hg38
 
-out_file <- "/gpfs01/home/mbxll1/CNS_cancer_project/ichorCNA/resources/g_hg38_500kb.wig"
-
 window <- 500000
-chromosomes <- paste0("chr", c(1:22, "X"))
+chromosomes <- paste0("chr", c(1:22))
 
 con <- file(out_file, open = "w")
 
