@@ -1,0 +1,9 @@
+name: ichorcna
+
+channels:
+  - conda-forge
+  - bioconda
+
+dependencies:
+  - samtools=1.23.1
+  - hmmcopy=0.1.1

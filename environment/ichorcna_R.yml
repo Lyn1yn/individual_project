@@ -1,0 +1,16 @@
+name: ichorcna_R
+
+channels:
+  - conda-forge
+  - bioconda
+
+dependencies:
+  - r-base=4.4.3
+  - r-ichorcna=0.5.1
+  - bioconductor-hmmcopy
+  - bioconductor-bsgenome.hsapiens.ucsc.hg38
+  - bioconductor-biostrings
+  - r-optparse
+  - r-stringr
+  - r-readr
+  - r-dplyr

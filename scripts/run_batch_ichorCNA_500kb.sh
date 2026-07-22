@@ -5,7 +5,7 @@
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --array=0-8%1
+#SBATCH --array=0-10%1
 
 set -eo pipefail
 
@@ -24,16 +24,19 @@ WORKDIR="${PROJECT_DIR}/ichorcna_autosome"
 RAW_BAM_DIR="/gpfs01/share/BioinfMSc/Matt_Projects/Nanopore"
 
 BAMS=(
-"sort_Intraop0006_A.bam"
-"sort_Intraop0021_c.bam"
-"sort_Intraop0030_a.bam"
-"sort_Intraop0034_b.bam"
-"sort_Intraop0051_c.bam"
-"sort_Intraop0057_c.bam"
-"sort_ds1305_CNVDetection_0051_c.bam"
-"sort_ds1305_CNVIntraop0067_a.bam"
-"sort_ds1305_Intraop_CNV_0062_c.bam"
+  sort_Intraop0006_A.bam
+  sort_Intraop0013_b_realign.bam
+  sort_Intraop0021_c.bam
+  sort_Intraop0029_b.bam
+  sort_Intraop0030_a.bam
+  sort_Intraop0034_b.bam
+  sort_Intraop0051_c.bam
+  sort_Intraop0057_c.bam
+  sort_ds1305_CNVDetection_0051_c.bam
+  sort_ds1305_CNVIntraop0067_a.bam
+  sort_ds1305_Intraop_CNV_0062_c.bam
 )
+
 
 BAM_NAME="${BAMS[$SLURM_ARRAY_TASK_ID]}"
 
