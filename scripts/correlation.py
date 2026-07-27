@@ -15,7 +15,7 @@ samples_dir = Path("/gpfs01/share/BioinfMSc/Matt_Projects/samples")
 # output folder
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 
-outdir = PROJECT_DIR / "correlation"
+outdir = PROJECT_DIR / "correctlation"
 
 
 outdir.mkdir(parents=True, exist_ok=True)
@@ -88,20 +88,6 @@ def merge_illumina(sub, target_reads):
         y_list.append(np.median(cn_group)) #calculate median copy number of the last group
 
     return np.array(x_list), np.array(y_list) #get the x axis and copy number values for y axis position
-
-
-
-#3b. raw (no-merge) illumina points, used only for computing no-merge Illumina CN load colouring
-def raw_illumina_points(sub):
-    """Use original Illumina target bins directly, without merging."""
-    if len(sub) == 0:
-        return np.array([], dtype=float), np.array([], dtype=float)
-
-    starts = sub["start"].values.astype(float)
-    stops = sub["stop"].values.astype(float)
-    x = (starts + stops) / 2
-    y = sub["copy_number"].values.astype(float)
-    return x, y
 
 
 
@@ -230,10 +216,6 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
     _illumina_per_chrom = {}
     _nanopore_per_chrom  = {}
 
-    # per-chromosome ALL raw (no-merge) Illumina CN values (no Nanopore matching),
-    # only used to colour plots by no-merge Illumina CN load
-    _illumina_per_chrom_no_merge = {}
-
 
 ##process chromosome-by-chromosome
     #illumina and nanopore data for each chromosome
@@ -290,11 +272,6 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
         illumina_total_points += len(il_y) #calculate the total number of illumina matched points
         nanopore_total_points += len(np_y) #calculate the total number of nanopore matched points
         matched_total_points += n #calculate the matched points number
-
-        # no-merge Illumina CN load: use ALL raw Illumina bins directly,
-        # no Nanopore matching. Only used to colour plots.
-        _, il_y_raw = raw_illumina_points(sub)
-        _illumina_per_chrom_no_merge[chrom] = np.array(il_y_raw, dtype=float)
 
 
     all_illumina = np.array(all_illumina, dtype=float) #convert list to numpy array, and make sure it only contains numbers
@@ -428,10 +405,6 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
     illumina_cn_load, _, _ = compute_cn_load(all_illumina, _illumina_per_chrom)
     nanopore_cn_load, _, _ = compute_cn_load(all_nanopore, _nanopore_per_chrom)
 
-    # Illumina CN load computed from raw (no-merge) bins, used only for colouring plots below.
-    all_illumina_no_merge = np.concatenate(list(_illumina_per_chrom_no_merge.values())) if _illumina_per_chrom_no_merge else np.array([], dtype=float)
-    illumina_cn_load_no_merge, _, _ = compute_cn_load(all_illumina_no_merge, _illumina_per_chrom_no_merge)
-
     # Ploidy-aware CN load for samples estimated as ploidy 3 by ichorCNA.
     # The CN profile is normalised so its median maps to 2, but for a ploidy-3 tumour
     # the true baseline is 3 copies. We rescale relative CN (centred on 2) into an
@@ -525,10 +498,6 @@ for sample_dir in sorted(samples_dir.iterdir()): #iterate through everything und
         "illumina_cn_load_ploidy_adjusted": illumina_cn_load_ploidy_adjusted,
         "nanopore_cn_load_ploidy_adjusted": nanopore_cn_load_ploidy_adjusted,
 
-        # Illumina CN load from raw (no-merge) bins, used for colouring plots
-        "illumina_cn_load_no_merge": illumina_cn_load_no_merge,
-
-
         "pearson_r": pearson_r,
     })
 
@@ -615,11 +584,10 @@ plt.close()
 # Illumina copy number load vs Pearson
 plt.figure(figsize=(6, 5))
 
-sc = plt.scatter(
+plt.scatter(
     summary_df["illumina_cn_load"],
     summary_df["pearson_r"],
-    c=summary_df["illumina_cn_load_no_merge"],
-    cmap="viridis",
+    color="tab:blue",
     s=45,
     edgecolors="black",
     linewidths=0.3
@@ -649,9 +617,6 @@ for _, row in special.iterrows():
 
 plt.legend(fontsize=7)
 
-cbar = plt.colorbar(sc)
-cbar.set_label("Illumina CN load from no-merge data (%)")
-
 plt.xlabel("Illumina copy number load (%)")
 plt.ylabel("Pearson correlation coefficient")
 plt.title("Illumina copy number load vs Pearson correlation")
@@ -666,11 +631,10 @@ plt.close()
 # Nanopore copy number load vs Pearson
 plt.figure(figsize=(6, 5))
 
-sc = plt.scatter(
+plt.scatter(
     summary_df["nanopore_cn_load"],
     summary_df["pearson_r"],
-    c=summary_df["illumina_cn_load_no_merge"],
-    cmap="viridis",
+    color="tab:blue",
     s=45,
     edgecolors="black",
     linewidths=0.3
@@ -699,9 +663,6 @@ for _, row in special.iterrows():
     )
 
 plt.legend(fontsize=7)
-
-cbar = plt.colorbar(sc)
-cbar.set_label("Illumina CN load from no-merge data (%)")
 
 plt.xlabel("Nanopore copy number load (%)")
 plt.ylabel("Pearson correlation coefficient")
