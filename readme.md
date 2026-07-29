@@ -27,7 +27,7 @@ individual_project/
 ├── environment/
 │   ├── ichorcna.yml
 │   └── ichorcna_R.yml
-└── .DS_Store
+├── .DS_Store
 └── .Rhistory
 
 
