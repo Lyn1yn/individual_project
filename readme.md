@@ -1,3 +1,6 @@
+# Cross-platform Concordance of Copy Number Variation Profiles from Oxford Nanopore and Illumina Sequencing in Central Nervous System Tumours
+
+
 # 1. Individual Project
 
 This repository contains four related workflows:
@@ -24,7 +27,10 @@ individual_project/
 ├── environment/
 │   ├── ichorcna.yml
 │   └── ichorcna_R.yml
-└── .gitignore
+└── .DS_Store
+└── .Rhistory
+
+
 ```
 
 ```text
